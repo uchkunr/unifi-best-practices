@@ -1,75 +1,94 @@
-<h1 align="center" id="unifi-controller-api">
-UniFi Controller API — Comprehensive Guide
+<h1 id="unifi-controller-api">
+UniFi Controller API - Comprehensive Guide
 </h1>
-<div align="center">
-    <img alt="License" src="https://img.shields.io/badge/License-MIT-blue.svg" />
-    <img alt="UniFi" src="https://img.shields.io/badge/UniFi-API-0a84ff.svg" />
-</div>
 
-A comprehensive, high-level reference for developers working with the Ubiquiti UniFi Controller API.
+A comprehensive, up-to-date reference for developers working with Ubiquiti's UniFi APIs — covering both the **Official API** (Site Manager cloud + Network Integration API with `X-API-KEY`) and the **Classic/Internal Controller API** (cookie session).
 
-## 📚 Table of Contents
+## Table of Contents
 
-- [UniFi Controller API — Comprehensive Guide](#unifi-controller-api)
+- [Overview](#overview)
+- [API Flavors](#api-flavors)
+- [Core Concepts](#core-concepts)
+- [Authentication](#authentication)
+  - [Official API Key (X-API-KEY)](#official-api-key-x-api-key)
+  - [Classic Login (Cookie Session)](#classic-login-cookie-session)
+  - [UniFi OS vs Standalone Controller](#unifi-os-vs-standalone-controller)
+  - [CSRF Token](#csrf-token)
+  - [MFA / 2FA](#mfa--2fa)
+- [Quick Start](#quick-start)
+- [Official Site Manager API (Cloud)](#official-site-manager-api-cloud)
+- [Official Network Integration API (Local)](#official-network-integration-api-local)
+- [Classic API Endpoint Reference](#classic-api-endpoint-reference)
+  - [Device Management](#device-management)
+  - [Client Management](#client-management)
+  - [Internet Access Control](#internet-access-control)
+  - [Network Configuration](#network-configuration)
+  - [WLAN Configuration](#wlan-configuration)
+  - [Firewall & Security](#firewall--security)
+  - [Port Forwarding](#port-forwarding)
+  - [Routing & DynamicDNS](#routing--dynamicdns)
+  - [Site Management](#site-management)
+  - [Hotspot & Vouchers](#hotspot--vouchers)
+  - [Events & Alarms](#events--alarms)
+  - [Backups](#backups)
+  - [Statistics & Monitoring](#statistics--monitoring)
+  - [Admin Management](#admin-management)
+- [Pagination and Filtering](#pagination-and-filtering)
+- [Rate Limiting & Error Handling](#rate-limiting--error-handling)
+- [WebSocket Events (Real-time)](#websocket-events-real-time)
+- [Community SDKs & Tools](#community-sdks--tools)
 
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [Core Concepts](#core-concepts)
-  - [Quick Start](#quick-start)
-  - [API Endpoint Reference](#api-endpoint-reference)
+## Overview
 
-    - [Authentication](#authentication)
-    - [Device Management](#device-management)
-    - [Client Management](#client-management)
-    - [Internet Access Control](#internet-access-control)
-    - [Network Configuration](#network-configuration)
-    - [Site Management](#site-management)
-    - [Statistics & Monitoring](#statistics--monitoring)
-    - [Pagination and Filtering](#pagination-and-filtering)
+The UniFi API allows programmatic control over your entire UniFi network — devices, clients, WLANs, firewalls, vouchers, and more. Ubiquiti provides two officially supported APIs, alongside the long-standing internal controller API that community tooling has relied on for years.
 
-  - [WebSocket API](#websocket-api)
+## API Flavors
 
-    - [Connection Establishment](#connection-establishment)
-    - [Common Event Types](#common-event-types)
-    - [WebSocket Event Handling Best Practices](#websocket-event-handling-best-practices)
+| Flavor | Scope | Auth | Base URL | Status |
+| --- | --- | --- | --- | --- |
+| **Site Manager API** | Cloud — monitor/manage deployments at scale | `X-API-KEY` | `https://api.ui.com/v1/` | Official, GA |
+| **Network Integration API** | Local — per-application control on a console | `X-API-KEY` | `https://{console}/proxy/network/integration/v1/` | Official, v9.3+ |
+| **Classic Controller API** | Local — full internal surface | Cookie session | `https://{controller}:8443/api/...` or `/proxy/network/api/...` on UniFi OS | Unofficial but stable |
 
-## 🧭 Overview
+> Prefer the Official APIs for new integrations. Fall back to the Classic API for endpoints not yet exposed officially (firewall rules, port forwards, detailed statistics, etc.).
 
-The UniFi Controller API allows programmatic control over your entire UniFi network, including devices, clients, and configuration settings. This document provides a structured guide to the most common and useful API endpoints.
+## Core Concepts
 
-## 🧠 Core Concepts
+- **Site Structure**: Most endpoints require a site identifier (`default` is the primary site).
+- **Response Format**: JSON with standard structure `{ "meta": { "rc": "ok" }, "data": [...] }`. On error: `{ "meta": { "rc": "error", "msg": "api.err.Invalid" } }`.
+- **MAC Addresses**: Use lowercase, typically without separators (e.g., `00112233aabb`).
+- **IDs**: Most objects use a MongoDB-style `_id` field.
 
-- **Authentication**: Session-based with cookie persistence
-- **Site Structure**: Most endpoints require a site identifier (`default` is the primary site)
-- **Response Format**: JSON with standard structure `{ "meta": { "rc": "ok" }, "data": [...] }`
-- **MAC Addresses**: Use lowercase, typically without separators (e.g., `00112233aabb`)
+## Authentication
 
-## ⚡ Quick Start
+### Official API Key (X-API-KEY)
+
+Available on **UniFi OS-based consoles** (UDM, UDR, UCG, UX, UDW, UCG-Ultra, UniFi OS Server). The key inherits the creator admin's permissions.
+
+**Generating a key:**
+- Cloud: <https://unifi.ui.com> → your profile → API Keys
+- Local: UniFi Network → **Settings → Control Plane → Integrations**
 
 ```javascript
-const response = await axios.post(
-  "https://unifi.example.com/api/login",
+const response = await axios.get(
+  "https://192.168.1.1/proxy/network/integration/v1/sites",
   {
-    username: "admin",
-    password: "password",
-    remember: true,
-  },
-  {
-    withCredentials: true,
+    headers: { "X-API-KEY": process.env.UNIFI_API_KEY, Accept: "application/json" },
     httpsAgent: new https.Agent({ rejectUnauthorized: false }),
   }
 );
 ```
 
-## 🔌 API Endpoint Reference
+Stateless — no login/logout flow required. Ideal for scripts, CI, and long-running services.
 
-### 🔐 Authentication
+### Classic Login (Cookie Session)
 
 | Operation      | Method | Endpoint      | Description                     |
 | -------------- | ------ | ------------- | ------------------------------- |
-| Login          | POST   | `/api/login`  | Establish authenticated session |
-| Verify Session | GET    | `/api/self`   | Check if session is valid       |
-| Logout         | POST   | `/api/logout` | End current session             |
+| Login (legacy) | POST   | `/api/login`  | Standalone controller           |
+| Login (UniFi OS) | POST | `/api/auth/login` | UDM / UCG / UniFi OS Server  |
+| Verify Session | GET    | `/api/self`   | Check session validity          |
+| Logout         | POST   | `/api/logout` / `/api/auth/logout` | End session       |
 
 ```json
 {
@@ -79,47 +98,146 @@ const response = await axios.post(
 }
 ```
 
-### 🛠️ Device Management
+### UniFi OS vs Standalone Controller
+
+| Aspect | Standalone (software controller) | UniFi OS (UDM/UCG/UDR) |
+| --- | --- | --- |
+| Port | `8443` | `443` (or `11443` for UniFi OS Server) |
+| Login | `/api/login` | `/api/auth/login` |
+| API prefix | `/api/...` | `/proxy/network/api/...` |
+| CSRF | Not required | Required on state-changing calls |
+
+### CSRF Token
+
+On UniFi OS, the login response includes a `X-CSRF-Token` header (or `TOKEN` cookie). Include this header on every `POST`/`PUT`/`DELETE`:
+
+```javascript
+api.defaults.headers.common["X-CSRF-Token"] = loginResp.headers["x-csrf-token"];
+```
+
+### MFA / 2FA
+
+If the admin has 2FA enabled, the first login returns HTTP `499` with `meta.msg = "api.err.Ubic2faTokenRequired"`. Resubmit with:
+
+```json
+{ "username": "admin", "password": "pw", "token": "123456" }
+```
+
+## Quick Start
+
+```javascript
+// Official API (recommended)
+const client = axios.create({
+  baseURL: "https://192.168.1.1/proxy/network/integration/v1",
+  headers: { "X-API-KEY": process.env.UNIFI_API_KEY },
+  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+});
+
+const { data } = await client.get("/sites");
+```
+
+```javascript
+// Classic API (cookie session, UniFi OS)
+const jar = new CookieJar();
+const api = wrapper(axios.create({
+  baseURL: "https://192.168.1.1",
+  jar, withCredentials: true,
+  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+}));
+
+const login = await api.post("/api/auth/login", {
+  username: "admin", password: "password", remember: true,
+});
+api.defaults.headers.common["X-CSRF-Token"] = login.headers["x-csrf-token"];
+```
+
+## Official Site Manager API (Cloud)
+
+Base URL: `https://api.ui.com/v1/` · Auth: `X-API-KEY` · Rate limit: **10,000 req/min** (GA), `429` with `Retry-After` header on overflow.
+
+| Operation | Method | Endpoint | Description |
+| --- | --- | --- | --- |
+| List Hosts | GET | `/hosts` | All UniFi OS hosts on the account |
+| Host Details | GET | `/hosts/{id}` | Host metadata, status, uptime |
+| List Sites | GET | `/sites` | All sites across hosts |
+| List Devices | GET | `/devices` | Devices across every site |
+| ISP Metrics | GET | `/isp-metrics` | ISP performance samples |
+| Query ISP Metrics | POST | `/isp-metrics/query` | Filtered ISP metric query |
+| List SD-WAN | GET | `/sdwan-configs` | SD-WAN configurations |
+| SD-WAN Details | GET | `/sdwan-configs/{id}` | Specific SD-WAN config |
+| SD-WAN Status | GET | `/sdwan-configs/{id}/status` | Deployment status |
+
+> Currently read-mostly. Write scope (adopt, configure) is being rolled out through 2026.
+
+## Official Network Integration API (Local)
+
+Base URL: `https://{console}/proxy/network/integration/v1/` · Auth: `X-API-KEY` · Version: `v9.3.43`+ (check `/info`).
+
+| Operation | Method | Endpoint | Description |
+| --- | --- | --- | --- |
+| App Info | GET | `/info` | Controller version & capabilities |
+| List Sites | GET | `/sites` | Local sites |
+| List Devices | GET | `/sites/{siteId}/devices` | Devices in site |
+| Device Details | GET | `/sites/{siteId}/devices/{deviceId}` | Single device |
+| Device Stats | GET | `/sites/{siteId}/devices/{deviceId}/statistics/latest` | Latest metrics |
+| Device Action | POST | `/sites/{siteId}/devices/{deviceId}/actions` | e.g. `RESTART` |
+| Port Action | POST | `/sites/{siteId}/devices/{deviceId}/interfaces/ports/{idx}/actions` | e.g. `POWER_CYCLE` |
+| List Clients | GET | `/sites/{siteId}/clients` | Connected clients |
+| Client Details | GET | `/sites/{siteId}/clients/{clientId}` | Specific client |
+| Client Action | POST | `/sites/{siteId}/clients/{clientId}/actions` | `AUTHORIZE_GUEST_ACCESS`, etc. |
+| List Vouchers | GET | `/sites/{siteId}/hotspot/vouchers` | Hotspot vouchers |
+| Generate Vouchers | POST | `/sites/{siteId}/hotspot/vouchers` | Batch create |
+| Delete Voucher | DELETE | `/sites/{siteId}/hotspot/vouchers/{id}` | Remove voucher |
+
+```json
+{ "action": "RESTART" }
+```
+
+## Classic API Endpoint Reference
+
+All endpoints below are prefixed with `/api/s/{site}/` on a standalone controller, or `/proxy/network/api/s/{site}/` on UniFi OS.
+
+### Device Management
 
 | Operation        | Method | Endpoint                                | Description              |
 | ---------------- | ------ | --------------------------------------- | ------------------------ |
-| List All Devices | GET    | `/api/s/{site}/stat/device`             | Get all network devices  |
-| Device Details   | GET    | `/api/s/{site}/stat/device/{mac}`       | Get specific device info |
-| Device Stats     | GET    | `/api/s/{site}/stat/device/{mac}/stats` | Get performance metrics  |
-| Restart Device   | POST   | `/api/s/{site}/cmd/devmgr`              | Restart specific device  |
-| Upgrade Firmware | POST   | `/api/s/{site}/cmd/devmgr`              | Upgrade device firmware  |
+| List All Devices | GET    | `/stat/device`                          | Full device payload      |
+| Basic Device List | GET   | `/stat/device-basic`                    | Lightweight list         |
+| Device Details   | GET    | `/stat/device/{mac}`                    | Specific device          |
+| Restart / Adopt / Upgrade / Power-cycle / Spectrum-scan | POST | `/cmd/devmgr` | devmgr commands |
+| Locate (LED)     | POST   | `/cmd/devmgr`                           | `set-locate` / `unset-locate` |
 
 ```json
-{
-  "cmd": "restart",
-  "mac": "00:11:22:33:44:55"
-}
+{ "cmd": "restart", "mac": "00:11:22:33:44:55" }
+{ "cmd": "adopt", "mac": "00:11:22:33:44:55" }
+{ "cmd": "upgrade", "mac": "00:11:22:33:44:55" }
+{ "cmd": "power-cycle", "mac": "00:11:22:33:44:55", "port_idx": 5 }
 ```
 
-### 👥 Client Management
+### Client Management
 
-| Operation         | Method | Endpoint                        | Description                        |
-| ----------------- | ------ | ------------------------------- | ---------------------------------- |
-| Active Clients    | GET    | `/api/s/{site}/stat/sta`        | List all connected clients         |
-| All Clients       | GET    | `/api/s/{site}/stat/alluser`    | List all clients (inc. historical) |
-| Client Details    | GET    | `/api/s/{site}/stat/user/{mac}` | Get specific client details        |
-| Block Client      | POST   | `/api/s/{site}/cmd/stamgr`      | Block network access               |
-| Unblock Client    | POST   | `/api/s/{site}/cmd/stamgr`      | Restore network access             |
-| Disconnect Client | POST   | `/api/s/{site}/cmd/stamgr`      | Force client disconnection         |
+| Operation         | Method | Endpoint              | Description                        |
+| ----------------- | ------ | --------------------- | ---------------------------------- |
+| Active Clients    | GET    | `/stat/sta`           | Connected clients                  |
+| All Clients       | GET    | `/stat/alluser`       | Including historical               |
+| Client Details    | GET    | `/stat/user/{mac}`    | Specific client                    |
+| Known Clients     | GET    | `/rest/user`          | Configured clients                 |
+| Block / Unblock / Kick | POST | `/cmd/stamgr`       | `block-sta` / `unblock-sta` / `kick-sta` |
+| Authorize Guest   | POST   | `/cmd/stamgr`         | `authorize-guest`                  |
+| Unauthorize Guest | POST   | `/cmd/stamgr`         | `unauthorize-guest`                |
+| Forget Client     | POST   | `/cmd/stamgr`         | `forget-sta`                       |
 
 ```json
-{
-  "cmd": "block-sta",
-  "mac": "aa:bb:cc:dd:ee:ff"
-}
+{ "cmd": "authorize-guest", "mac": "aa:bb:cc:dd:ee:ff", "minutes": 60, "up": 1024, "down": 4096, "bytes": 1073741824 }
 ```
 
-### 🌐 Internet Access Control
+### Internet Access Control
 
-| Operation        | Method | Endpoint                              | Description                   |
-| ---------------- | ------ | ------------------------------------- | ----------------------------- |
-| Set Access       | POST   | `/api/s/{site}/rest/user/{client_id}` | Allow/deny internet access    |
-| Bandwidth Limits | POST   | `/api/s/{site}/rest/trafficrule`      | Create client bandwidth rules |
+| Operation        | Method | Endpoint                    | Description                   |
+| ---------------- | ------ | --------------------------- | ----------------------------- |
+| Update Client    | PUT    | `/rest/user/{client_id}`    | Set fixed IP, group, access   |
+| Traffic Rules    | GET/POST/PUT/DELETE | `/rest/trafficrule` | L7/bandwidth rules     |
+| Traffic Routes   | GET/POST/PUT/DELETE | `/rest/trafficroute` | Policy-based routing   |
 
 ```json
 {
@@ -130,14 +248,25 @@ const response = await axios.post(
 }
 ```
 
-### 🗺️ Network Configuration
+### Network Configuration
 
-| Operation      | Method | Endpoint                              | Description                 |
-| -------------- | ------ | ------------------------------------- | --------------------------- |
-| List Networks  | GET    | `/api/s/{site}/rest/networkconf`      | Get all networks            |
-| Create Network | POST   | `/api/s/{site}/rest/networkconf`      | Create new wireless network |
-| Update Network | PUT    | `/api/s/{site}/rest/networkconf/{id}` | Modify existing network     |
-| Delete Network | DELETE | `/api/s/{site}/rest/networkconf/{id}` | Remove network              |
+| Operation      | Method | Endpoint                        | Description                 |
+| -------------- | ------ | ------------------------------- | --------------------------- |
+| List Networks  | GET    | `/rest/networkconf`             | All LAN/VLAN networks       |
+| Create Network | POST   | `/rest/networkconf`             | Add network                 |
+| Update Network | PUT    | `/rest/networkconf/{id}`        | Modify                      |
+| Delete Network | DELETE | `/rest/networkconf/{id}`        | Remove                      |
+
+### WLAN Configuration
+
+| Operation    | Method | Endpoint                     | Description           |
+| ------------ | ------ | ---------------------------- | --------------------- |
+| List WLANs   | GET    | `/rest/wlanconf`             | All SSIDs             |
+| WLAN Details | GET    | `/rest/wlanconf/{id}`        | Specific WLAN         |
+| Create WLAN  | POST   | `/rest/wlanconf`             | New SSID              |
+| Update WLAN  | PUT    | `/rest/wlanconf/{id}`        | Modify SSID           |
+| Delete WLAN  | DELETE | `/rest/wlanconf/{id}`        | Remove SSID           |
+| WLAN Groups  | GET    | `/rest/wlangroup`            | AP group mapping      |
 
 ```json
 {
@@ -151,42 +280,111 @@ const response = await axios.post(
 }
 ```
 
-### 🏷️ Site Management
+### Firewall & Security
+
+| Operation         | Method | Endpoint                           | Description               |
+| ----------------- | ------ | ---------------------------------- | ------------------------- |
+| List Rules        | GET    | `/rest/firewallrule`               | User-defined rules        |
+| Update Rule       | PUT    | `/rest/firewallrule/{id}`          | Enable / edit             |
+| List Groups       | GET    | `/rest/firewallgroup`              | Address/port groups       |
+| Update Group      | PUT    | `/rest/firewallgroup/{id}`         | Edit group members        |
+| IPS/IDS Settings  | GET/PUT | `/rest/setting/ips`               | Threat management         |
+
+### Port Forwarding
+
+| Operation       | Method | Endpoint                       | Description          |
+| --------------- | ------ | ------------------------------ | -------------------- |
+| List Forwards   | GET    | `/rest/portforward`            | All forward rules    |
+| Create Forward  | POST   | `/rest/portforward`            | New rule             |
+| Toggle Forward  | PUT    | `/rest/portforward/{rule-id}`  | Enable / disable     |
+| Delete Forward  | DELETE | `/rest/portforward/{rule-id}`  | Remove               |
+| Port Profiles   | GET/PUT | `/rest/portconf`              | Switch port profiles |
+
+### Routing & DynamicDNS
+
+| Operation         | Method | Endpoint                | Description                |
+| ----------------- | ------ | ----------------------- | -------------------------- |
+| Static Routes     | GET/POST/PUT/DELETE | `/rest/routing` | User-defined routes |
+| DynamicDNS Config | GET/POST/PUT | `/rest/dynamicdns` | DDNS entries            |
+
+### Site Management
 
 | Operation   | Method | Endpoint                     | Description              |
 | ----------- | ------ | ---------------------------- | ------------------------ |
-| List Sites  | GET    | `/api/self/sites`            | Get all accessible sites |
-| Site Health | GET    | `/api/s/{site}/stat/health`  | Get site health metrics  |
-| Create Site | POST   | `/api/s/default/cmd/sitemgr` | Create new site          |
-| Delete Site | POST   | `/api/s/default/cmd/sitemgr` | Remove existing site     |
+| List Sites  | GET    | `/api/self/sites`            | Accessible sites         |
+| Sites + Health | GET | `/api/stat/sites`            | Health / alert summary   |
+| Site Health | GET    | `/stat/health`               | Per-subsystem health     |
+| Create Site | POST   | `/api/s/default/cmd/sitemgr` | `add-site`               |
+| Delete Site | POST   | `/api/s/default/cmd/sitemgr` | `delete-site`            |
+| Move Device | POST   | `/api/s/default/cmd/sitemgr` | `move-device`            |
 
 ```json
-{
-  "cmd": "add-site",
-  "name": "New Office",
-  "desc": "Branch office location"
-}
+{ "cmd": "add-site", "name": "New Office", "desc": "Branch office" }
 ```
 
-### 📊 Statistics & Monitoring
+### Hotspot & Vouchers
 
-| Operation        | Method | Endpoint                               | Description                      |
-| ---------------- | ------ | -------------------------------------- | -------------------------------- |
-| DPI Stats        | GET    | `/api/s/{site}/stat/dpi`               | Get Deep Packet Inspection stats |
-| Client DPI       | GET    | `/api/s/{site}/stat/stadpi`            | Get client-specific DPI stats    |
-| Historical Stats | GET    | `/api/s/{site}/stat/report/daily.site` | Get site history metrics         |
-| Gateway Stats    | GET    | `/api/s/{site}/stat/gateway`           | Get USG performance metrics      |
+| Operation         | Method | Endpoint                  | Description              |
+| ----------------- | ------ | ------------------------- | ------------------------ |
+| List Vouchers     | GET    | `/stat/voucher`           | All vouchers             |
+| Create Voucher    | POST   | `/cmd/hotspot`            | `create-voucher`         |
+| Delete Voucher    | POST   | `/cmd/hotspot`            | `delete-voucher`         |
+| Guest Operators   | GET    | `/rest/hotspotop`         | Hotspot operators        |
+| Payments          | GET    | `/stat/payment`           | Guest payments           |
 
-### Pagination and Filtering
+```json
+{ "cmd": "create-voucher", "n": 10, "expire": 1440, "quota": 1, "note": "Lobby" }
+```
+
+### Events & Alarms
+
+| Operation     | Method | Endpoint         | Description                        |
+| ------------- | ------ | ---------------- | ---------------------------------- |
+| List Events   | GET    | `/stat/event`    | Site events (capped at 3000)       |
+| List Alarms   | GET    | `/stat/alarm`    | Active alarms                      |
+| Archive Alarm | POST   | `/cmd/evtmgr`    | `archive-alarm`                    |
+
+### Backups
+
+| Operation       | Method | Endpoint         | Description        |
+| --------------- | ------ | ---------------- | ------------------ |
+| List Backups    | POST   | `/cmd/backup`    | `list-backups`     |
+| Create Backup   | POST   | `/cmd/backup`    | `backup`           |
+| Delete Backup   | POST   | `/cmd/backup`    | `delete-backup`    |
+| Download Backup | GET    | `/dl/backup/{filename}` | Raw download |
+
+### Statistics & Monitoring
+
+| Operation        | Method | Endpoint                       | Description                      |
+| ---------------- | ------ | ------------------------------ | -------------------------------- |
+| DPI Stats        | GET    | `/stat/dpi`                    | Deep Packet Inspection           |
+| Client DPI       | GET    | `/stat/stadpi`                 | Per-client DPI                   |
+| Daily Report     | GET    | `/stat/report/daily.site`      | Daily metrics                    |
+| Hourly Report    | GET    | `/stat/report/hourly.site`     | Hourly metrics                   |
+| 5-min Report     | GET    | `/stat/report/5minutes.site`   | 5-minute granularity             |
+| Gateway Stats    | GET    | `/stat/gateway`                | Gateway performance              |
+| Rogue APs        | GET    | `/stat/rogueap`                | Detected rogue access points     |
+| Known Rogues     | GET    | `/rest/rogueknown`             | Acknowledged rogues              |
+
+### Admin Management
+
+| Operation        | Method | Endpoint               | Description                     |
+| ---------------- | ------ | ---------------------- | ------------------------------- |
+| List Admins      | GET    | `/api/stat/admin`      | All admins & roles              |
+| Invite Admin     | POST   | `/cmd/sitemgr`         | `invite-admin`                  |
+| Revoke Admin     | POST   | `/cmd/sitemgr`         | `revoke-admin`                  |
+
+## Pagination and Filtering
 
 | Parameter | Description                                       | Example                                        |
 | --------- | ------------------------------------------------- | ---------------------------------------------- |
-| `_limit`  | Maximum number of items to return                 | `/api/s/{site}/stat/sta?_limit=50`             |
-| `_start`  | Index to start from (for offset-based pagination) | `/api/s/{site}/stat/sta?_start=50`             |
-| `mac`     | Filter by MAC address                             | `/api/s/{site}/stat/sta?mac=001122334455`      |
-| `ip`      | Filter by IP address                              | `/api/s/{site}/stat/sta?ip=192.168.1.100`      |
-| `within`  | Timeframe for historical data in seconds          | `/api/s/{site}/stat/sta?within=86400`          |
-| `attrs`   | Comma-separated list of attributes to include     | `/api/s/{site}/stat/sta?attrs=mac,ip,hostname` |
+| `_limit`  | Max items to return                               | `/stat/sta?_limit=50`                          |
+| `_start`  | Offset                                            | `/stat/sta?_start=50`                          |
+| `_sort`   | Sort field (prefix `-` for descending)            | `/stat/sta?_sort=-last_seen`                   |
+| `mac`     | Filter by MAC                                     | `/stat/sta?mac=001122334455`                   |
+| `ip`      | Filter by IP                                      | `/stat/sta?ip=192.168.1.100`                   |
+| `within`  | Historical window in hours                        | `/stat/sta?within=24`                          |
+| `attrs`   | Comma-separated attributes to include             | `/stat/sta?attrs=mac,ip,hostname`              |
 
 ```javascript
 const response = await api.get("/api/s/default/stat/sta", {
@@ -198,165 +396,50 @@ const response = await api.get("/api/s/default/stat/sta", {
 });
 ```
 
-## 🔔 WebSocket API
+## Rate Limiting & Error Handling
 
-UniFi Controller also provides a WebSocket interface for real-time event monitoring. This allows you to receive immediate notifications about network changes without polling.
-
-### 🔗 Connection Establishment
+- **Official APIs** enforce per-minute quotas (10k/min for Site Manager GA). Overflow returns `429` with an RFC-compliant `Retry-After` header.
+- **Classic API** has no documented quota but will return `401` on stale sessions — re-login on `meta.rc = "error"` with `api.err.LoginRequired`.
+- **Common error codes** (`meta.msg`):
+  - `api.err.Invalid` — bad request body
+  - `api.err.LoginRequired` — session expired
+  - `api.err.NoPermission` — admin role too low
+  - `api.err.Ubic2faTokenRequired` — 2FA challenge
 
 ```javascript
-const WebSocket = require("ws");
-const axios = require("axios");
-const https = require("https");
-const cookieJar = {};
-
-const api = axios.create({
-  baseURL: "https://unifi.example.com",
-  withCredentials: true,
-  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-});
-
-await api
-  .post("/api/login", {
-    username: "admin",
-    password: "password",
-  })
-  .then((response) => {
-    const cookies = response.headers["set-cookie"];
-    if (cookies) {
-      cookies.forEach((cookie) => {
-        const [key, value] = cookie.split(";")[0].split("=");
-        cookieJar[key] = value;
-      });
-    }
-  });
-
-const cookieString = Object.entries(cookieJar)
-  .map(([key, value]) => `${key}=${value}`)
-  .join("; ");
-
-const ws = new WebSocket("wss://unifi.example.com/wss/s/default/events", {
-  headers: {
-    Cookie: cookieString,
-  },
-  rejectUnauthorized: false,
-});
-
-ws.on("open", () => {
-  console.log("WebSocket connection established");
-});
-
-ws.on("message", (data) => {
-  const event = JSON.parse(data);
-  console.log("Received event:", event);
-
-  if (event.data && event.data.meta && event.data.meta.message) {
-    const msgType = event.data.meta.message;
-    switch (msgType) {
-      case "sta:sync":
-        console.log("Client update:", event.data.data);
-        break;
-      case "device:sync":
-        console.log("Device update:", event.data.data);
-        break;
-    }
+try {
+  await client.post(...);
+} catch (err) {
+  if (err.response?.status === 429) {
+    const wait = Number(err.response.headers["retry-after"] ?? 1);
+    await new Promise(r => setTimeout(r, wait * 1000));
   }
-});
-
-ws.on("error", (error) => {
-  console.error("WebSocket error:", error);
-});
-
-ws.on("close", () => {
-  console.log("WebSocket connection closed");
-});
-```
-
-### 🧾 Common Event Types
-
-| Event Type       | Description                | When Triggered                      |
-| ---------------- | -------------------------- | ----------------------------------- |
-| `sta:sync`       | Client status updates      | Client connects/disconnects/updates |
-| `device:sync`    | Device status updates      | Device status changes               |
-| `alarm`          | System alarms and warnings | New alert triggered                 |
-| `speedtest:done` | WAN speed test completed   | After running a speed test          |
-| `backup:done`    | Backup creation completed  | After creating a backup             |
-| `evt`            | Various system events      | Various actions on the system       |
-| `notification`   | System notifications       | New notification                    |
-
-### ✅ WebSocket Event Handling Best Practices
-
-1. **Automatic Reconnection**
-
-```javascript
-function connectWebSocket() {
-  const ws = new WebSocket("wss://unifi.example.com/wss/s/default/events", {
-    headers: { Cookie: cookieString },
-    rejectUnauthorized: false,
-  });
-
-  const connectionTimeout = setTimeout(() => {
-    if (ws.readyState !== WebSocket.OPEN) {
-      ws.terminate();
-      console.log("Connection attempt timed out, retrying...");
-      setTimeout(connectWebSocket, 5000);
-    }
-  }, 10000);
-
-  ws.on("open", () => {
-    clearTimeout(connectionTimeout);
-    console.log("WebSocket connection established");
-
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      } else {
-        clearInterval(pingInterval);
-      }
-    }, 30000);
-  });
-
-  ws.on("close", () => {
-    console.log("Connection closed, attempting to reconnect...");
-    setTimeout(connectWebSocket, 5000);
-  });
 }
-
-connectWebSocket();
 ```
 
-2. **Event Filtering and Processing**
+## WebSocket Events (Real-time)
 
-```javascript
-const eventHandlers = {
-  "sta:sync": (data) => {
-    const clientMac = data.mac;
-    const connectionState = data.state ? "connected" : "disconnected";
-    console.log(`Client ${clientMac} is now ${connectionState}`);
-  },
-  "device:sync": (data) => {
-    console.log(`Device ${data.name} (${data.mac}) updated: ${data.state}`);
-  },
-  alarm: (data) => {
-    console.log(`ALARM: ${data.msg} (Key: ${data.key}, Time: ${data.time})`);
-  },
-};
+The controller exposes a real-time feed:
 
-ws.on("message", (rawData) => {
-  try {
-    const event = JSON.parse(rawData);
+- Standalone: `wss://{controller}:8443/wss/s/{site}/events`
+- UniFi OS: `wss://{console}/proxy/network/wss/s/{site}/events`
 
-    if (event.data && event.data.meta && event.data.meta.message) {
-      const msgType = event.data.meta.message;
+Send the session cookie (or `X-API-KEY` where supported) on the upgrade request. Useful for live client join/leave, device state, alarm push, and voucher consumption without polling `/stat/event`.
 
-      if (eventHandlers[msgType]) {
-        eventHandlers[msgType](event.data.data);
-      } else {
-        console.log(`Unhandled event type: ${msgType}`);
-      }
-    }
-  } catch (error) {
-    console.error("Error processing WebSocket message:", error);
-  }
-});
-```
+## Community SDKs & Tools
+
+- [Art-of-WiFi/UniFi-API-client](https://github.com/Art-of-WiFi/UniFi-API-client) — PHP client, most complete surface
+- [Art-of-WiFi/UniFi-API-browser](https://github.com/Art-of-WiFi/UniFi-API-browser) — interactive data browser
+- [aiounifi](https://github.com/Kane610/aiounifi) — async Python client (used by Home Assistant)
+- [pyunifi](https://github.com/finish06/pyunifi) — Python sync client
+- [node-unifi](https://github.com/jens-maus/node-unifi) — Node.js client
+- [Pulumi UniFi provider](https://www.pulumi.com/registry/packages/unifi/) — IaC for networks/WLANs/firewalls
+
+---
+
+**References:**
+[UniFi Developer Portal](https://developer.ui.com/) ·
+[Site Manager API](https://developer.ui.com/site-manager/v1.0.0/gettingstarted) ·
+[Network Integration API](https://developer.ui.com/network/v9.3.43/gettingstarted) ·
+[Getting Started (Help Center)](https://help.ui.com/hc/en-us/articles/30076656117655-Getting-Started-with-the-Official-UniFi-API) ·
+[Ubiquiti Community Wiki](https://ubntwiki.com/products/software/unifi-controller/api)
