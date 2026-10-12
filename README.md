@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://developer.ui.com/"><img src="https://img.shields.io/badge/unifi--api-v10.1.68-0055ff?logo=ubiquiti" alt="UniFi API Version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC--BY--4.0-lightgrey" alt="License: CC BY 4.0" /></a>
 </p>
 
 ## Overview
